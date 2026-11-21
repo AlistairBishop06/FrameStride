@@ -1,0 +1,6 @@
+{
+  "name": "framestride",
+  "resourceOnly": false,
+  "alwaysActivate": true,
+  "hmd_presence": []
+}

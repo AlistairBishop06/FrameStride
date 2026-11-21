@@ -1,0 +1,15 @@
+{
+  "app_key": "REPLACE_WITH_GAME_APP_KEY",
+  "controller_type": "framestride_treadmill",
+  "name": "FrameStride Standard Locomotion",
+  "description": "Replace the action set and vector2 action with the paths from the game's manifest",
+  "bindings": {
+    "/actions/REPLACE_WITH_GAME_ACTION_SET": {
+      "sources": [{
+        "path": "/user/treadmill/input/joystick",
+        "mode": "joystick",
+        "inputs": {"position": {"output": "/actions/REPLACE_WITH_GAME_ACTION_SET/in/REPLACE_WITH_MOVE_ACTION"}}
+      }]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+*.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.vrmanifest text eol=lf
+*.vrdrivermanifest text eol=lf
+*.png binary

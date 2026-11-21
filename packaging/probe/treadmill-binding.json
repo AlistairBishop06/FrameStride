@@ -1,0 +1,17 @@
+{
+  "app_key": "org.framestride.input-test",
+  "controller_type": "framestride_treadmill",
+  "description": "Read FrameStride's treadmill independently of the hand controllers",
+  "name": "FrameStride Input Test",
+  "bindings": {
+    "/actions/test": {
+      "sources": [
+        {
+          "path": "/user/treadmill/input/joystick",
+          "mode": "joystick",
+          "inputs": {"position": {"output": "/actions/test/in/move"}}
+        }
+      ]
+    }
+  }
+}

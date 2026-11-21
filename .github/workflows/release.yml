@@ -1,0 +1,69 @@
+name: Build and release FrameStride
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Test on Linux
+        run: |
+          cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-host
+          ctest --test-dir build-host --output-on-failure
+      - name: Fetch the pinned Zig toolchain
+        run: |
+          curl --fail --show-error --silent --location --retry 3 \
+            https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz -o zig.tar.xz
+          echo '24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c  zig.tar.xz' | sha256sum -c
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.14.1" >> "$GITHUB_PATH"
+      - name: Build and stage ARM64
+        run: |
+          cmake -S . -B build-frame -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/zig-linux.cmake \
+            -DCMAKE_BUILD_TYPE=Release -DFRAMESTRIDE_NATIVE=ON -DBUILD_TESTING=OFF
+          cmake --build build-frame
+          cmake --install build-frame --prefix build-frame/stage
+      - name: Package and check installation
+        run: |
+          python3 scripts/package.py build-frame/stage dist
+          bash tests/install_test.sh dist/framestride-*-linux-aarch64.tar.gz
+          (cd dist && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: framestride-linux-aarch64
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify-and-package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: framestride-linux-aarch64
+          path: dist
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          archive="dist/framestride-${tag#v}-linux-aarch64.tar.gz"
+          test -f "$archive"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$archive" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          fi

@@ -1,0 +1,22 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "org.framestride.dashboard",
+      "launch_type": "binary",
+      "binary_path_linux": "framestride",
+      "is_dashboard_overlay": true,
+      "image_path": "assets/icon.png",
+      "strings": {"en_us": {"name": "FrameStride", "description": "Walk-in-place locomotion"}}
+    },
+    {
+      "app_key": "org.framestride.input-test",
+      "launch_type": "binary",
+      "binary_path_linux": "framestride",
+      "arguments": "--probe",
+      "action_manifest_path": "probe/actions.json",
+      "image_path": "assets/icon.png",
+      "strings": {"en_us": {"name": "FrameStride Input Test", "description": "Reads the actual SteamVR locomotion action"}}
+    }
+  ]
+}

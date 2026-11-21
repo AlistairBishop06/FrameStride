@@ -1,0 +1,13 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "framestride_treadmill",
+  "input_bindingui_mode": "single_device",
+  "input_bindingui_left": {"image": "{framestride}/icons/framestride.svg"},
+  "input_bindingui_right": {"image": "{framestride}/icons/framestride.svg"},
+  "input_source": {
+    "/input/joystick": {"type": "joystick", "binding_image_point": [64, 64], "order": 0, "touch": true, "click": false}
+  },
+  "localization": [
+    {"language_tag": "en_US", "controller_type": "FrameStride Treadmill", "/input/joystick": "Walk-in-place stick"}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "action_sets": [{"name": "/actions/test", "usage": "single"}],
+  "actions": [{"name": "/actions/test/in/move", "type": "vector2", "requirement": "optional"}],
+  "default_bindings": [{"controller_type": "framestride_treadmill", "binding_url": "treadmill-binding.json"}],
+  "localization": [{"language_tag": "en_US", "/actions/test": "Input Test", "/actions/test/in/move": "Move"}]
+}
