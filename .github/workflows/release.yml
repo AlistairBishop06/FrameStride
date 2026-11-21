@@ -38,6 +38,7 @@ jobs:
           python3 scripts/package.py build-frame/stage dist
           bash tests/install_test.sh dist/framestride-*-linux-aarch64.tar.gz
           (cd dist && sha256sum -c SHA256SUMS)
+          cp scripts/install-from-release.sh dist/install-framestride.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: framestride-linux-aarch64
@@ -62,8 +63,9 @@ jobs:
           tag="$GITHUB_REF_NAME"
           archive="dist/framestride-${tag#v}-linux-aarch64.tar.gz"
           test -f "$archive"
+          assets=("$archive" dist/SHA256SUMS dist/install-framestride.sh)
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" "$archive" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" "$archive" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+            gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest
           fi

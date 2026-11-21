@@ -4,7 +4,19 @@ FrameStride converts rhythmic headset movement into continuously variable forwar
 
 **Version 1.0.0 is an ARM64 SteamOS build for on-device validation.** Start with the included Input Test. Steam Frame hardware, its in-headset dashboard, and gameplay reception require device testing. See the [input guide](docs/INPUT.md) for the two supported input routes and their coverage.
 
-## Install from Windows
+## Install on the Frame over RDP
+
+Enable Developer Mode, connect to the Frame over Remote Desktop, and open **Konsole** in the `steamos` session. Run this command as `steamos` without `sudo`. It downloads the latest published ARM64 build from GitHub Releases, checks its SHA-256, and installs it on the headset. [Valve’s Remote Desktop instructions](https://partner.steamgames.com/doc/steamhardware/steamframe/debugging)
+
+```sh
+curl -fsSL https://github.com/AlistairBishop06/FrameStride/releases/latest/download/install-framestride.sh | bash
+```
+
+Restart SteamVR and open **FrameStride** in the dashboard. Run the same command to update. Your calibration and settings carry over.
+
+## Other installation methods
+
+### Windows SSH installer
 
 On the Frame, turn on **Steam Settings → System → Enable Developer Mode** and set a user password in **Developer**. The Windows PC and headset need to be reachable on the same network. The installer uses the Windows OpenSSH `ssh.exe` and `scp.exe` clients. [Valve’s Steam Frame setup guide](https://partner.steamgames.com/doc/steamhardware/steamframe/setup)
 
@@ -17,7 +29,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\framestride-1.0.0-linux-aa
 
 Pass `-Target <Frame IPv4 address>` if the name `frame` fails. The script uploads the archive and runs the Linux installer as `steamos`. Restart SteamVR to load the driver. Open the **FrameStride** tab in the SteamVR dashboard.
 
-## Install on the Frame
+### Install from a downloaded archive
 
 Enable Developer Mode and open a terminal on the Frame or SSH to it as `steamos`. Download or copy the archive to the headset and run the following commands. The installer registers the treadmill driver, creates the user service and installs the optional OpenXR manifest. Files go under `~/.local/share/framestride` and `~/.config` by default.
 
@@ -39,7 +51,7 @@ Restart SteamVR after first install or after replacing the driver. The service s
 
 Where the runtime reports grip and stick clicks through the legacy controller state, you can enable the emergency shortcut in **Settings** and hold the left grip plus left stick click for 600 ms. Check the shortcut with output at neutral before relying on it.
 
-For a backend check over SSH, run the following command with the headset awake and the controllers connected. Add `--probe` to read the actual SteamVR Input Test action for up to 25 seconds. For an isolated run, temporarily turn off **Only enable output with a game running**, select the SteamVR treadmill backend, close the dashboard and walk briefly. A successful readback is evidence for the probe's binding. Verify each game separately.
+For a backend check in Konsole or over SSH, run the following command with the headset awake and the controllers connected. Add `--probe` to read the actual SteamVR Input Test action for up to 25 seconds. For an isolated run, temporarily turn off **Only enable output with a game running**, select the SteamVR treadmill backend, close the dashboard and walk briefly. A successful readback is evidence for the probe's binding. Verify each game separately.
 
 ```sh
 ~/.local/share/framestride/test-on-frame.sh --probe
@@ -47,7 +59,7 @@ For a backend check over SSH, run the following command with the headset awake a
 
 ## Update and uninstall
 
-Extract a newer archive and run its `./update.sh` on the Frame or its `install.ps1` from Windows. Both use the same installation routine. Restart SteamVR to load an updated driver. Settings and calibration are stored in `~/.config/framestride/settings.json` and persist across updates and uninstallations.
+Rerun the release command in Konsole for the latest published version. For a specific release, pass its tag to the installer, for example `| bash -s -- v1.0.0` at the end of the command. You can also extract a newer archive and run its `./update.sh` on the Frame or its `install.ps1` from Windows. Restart SteamVR to load an updated driver. Settings and calibration are stored in `~/.config/framestride/settings.json` and persist across updates and uninstallations.
 
 ```sh
 ~/.local/share/framestride/uninstall.sh

@@ -10,12 +10,16 @@ service=$config/systemd/user/framestride.service
 xrdir=$config/openxr/1/api_layers/implicit.d
 xrmanifest=$xrdir/framestride.json
 unit=framestride.service
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+uid=$(id -u)
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$uid}
+if [[ ! -S $runtime_dir/bus && -S /run/user/$uid/bus ]]; then runtime_dir=/run/user/$uid; fi
+export XDG_RUNTIME_DIR=$runtime_dir
+if [[ -S $runtime_dir/bus ]]; then export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus; fi
 
 if [[ $(uname -s) != Linux || $(uname -m) != aarch64 ]]; then
     echo 'This package is for Linux aarch64.' >&2; exit 1
 fi
-if [[ $(id -u) == 0 ]]; then
+if [[ $uid == 0 ]]; then
     echo 'Run the installer as your regular Steam Frame user.' >&2; exit 1
 fi
 if [[ ! -x $here/payload/framestride || ! -f $here/payload/driver/framestride/bin/linuxarm64/driver_framestride.so ]]; then
@@ -35,7 +39,7 @@ find_registrar() {
     command -v vrpathreg
 }
 registrar=$(find_registrar) || { echo 'SteamVR driver registration tool could not be located.' >&2; exit 1; }
-systemctl --user show-environment >/dev/null || { echo 'The SteamOS systemd user session is unavailable.' >&2; exit 1; }
+systemctl --user show-environment >/dev/null || { echo 'Open Konsole in the logged-in SteamOS session as steamos and rerun the installer.' >&2; exit 1; }
 
 mkdir -p -- "$data" "$config/framestride" "$(dirname "$service")" "$xrdir"
 exec 9>"$config/framestride/.install.lock"
