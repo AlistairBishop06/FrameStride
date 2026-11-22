@@ -6,7 +6,9 @@ namespace stride {
 
 enum class Channel { Motion, Driver, OpenXR };
 enum Flag : unsigned {
-    Ready = 1, Submitted = 2, XrSelected = 4, Override = 8, Tracking = 16, Physical = 32
+    Ready = 1, Submitted = 2, XrSelected = 4, Override = 8, Tracking = 16,
+    Physical = 32,             // OpenXR feedback packet
+    TreadmillSuppressed = 32   // Motion packet
 };
 
 constexpr unsigned watchdogMs = 120;

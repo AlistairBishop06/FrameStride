@@ -117,13 +117,21 @@ data = json.loads(Path(sys.argv[1]).read_text())['api_layer']
 assert data['enable_environment'] == 'FRAMESTRIDE_XR_ENABLE'
 assert Path(data['library_path']).is_file()
 PY
-"$XDG_DATA_HOME/framestride/treadmill.sh" enable
-"$XDG_DATA_HOME/framestride/treadmill.sh" enable
+helper=$XDG_DATA_HOME/framestride/treadmill.sh
+status=0
+"$helper" status || status=$?
+[[ $status == 3 ]]
+"$helper" enable
+"$helper" enable
+"$helper" status
 [[ -f "$XDG_DATA_HOME/framestride/.treadmill-registered" && $(wc -l < "$TEST_DRIVER_REGISTRY") == 2 ]]
-"$XDG_DATA_HOME/framestride/treadmill.sh" disable
-"$XDG_DATA_HOME/framestride/treadmill.sh" disable
+"$helper" disable
+"$helper" disable
+status=0
+"$helper" status || status=$?
+[[ $status == 3 ]]
 [[ ! -e "$XDG_DATA_HOME/framestride/.treadmill-registered" && $(wc -l < "$TEST_DRIVER_REGISTRY") == 1 ]]
-"$XDG_DATA_HOME/framestride/treadmill.sh" enable
+"$helper" enable
 "$XDG_DATA_HOME/framestride/uninstall.sh"
 "$sandbox/uninstall.sh"
 cmp "$XDG_CONFIG_HOME/framestride/settings.json" "$sandbox/expected-settings"

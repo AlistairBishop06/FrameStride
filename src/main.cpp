@@ -221,7 +221,8 @@ void track(Runtime& vr, Shared& shared, const fs::path& config, InputBackend& ba
             auto& view = state.view;
             settings = state.settings;
             const auto status = backend.status(settings.openxr, now);
-            const bool connected = status.has(Ready) && status.has(Submitted);
+            const bool treadmillSuppressed = !settings.openxr && !state.driver.availableToConnect();
+            const bool connected = !treadmillSuppressed && status.has(Ready) && status.has(Submitted);
             if (state.stop) { shared.end = true; }
             if (!settings.startup || state.cancelStartup || state.calibration.active() || state.stop) startArmed = false;
             if (startArmed && connected) { view.armed = true; startArmed = false; }
@@ -251,7 +252,8 @@ void track(Runtime& vr, Shared& shared, const fs::path& config, InputBackend& ba
                                  !state.calibration.active() && (!settings.pauseDashboard || !dashboard) &&
                                  (!settings.gameOnly || scene != 0) && physical;
             const float forward = allowed && !manual ? motion.stick : 0;
-            const unsigned flags = (allowed ? Ready : 0) | (motion.tracking ? Tracking : 0);
+            const unsigned flags = (allowed ? Ready : 0) | (motion.tracking ? Tracking : 0) |
+                                   (treadmillSuppressed ? TreadmillSuppressed : 0);
             const bool written = backend.send(forward, settings, flags, now);
             view = {motion, status, view.armed, allowed, physical, manual, dashboard, scene != 0,
                     settings.openxr && status.has(Physical), written ? forward : 0};
@@ -362,6 +364,7 @@ int run(const fs::path& root, bool showDashboard) {
     NativeBackend backend;
     if (!backend.connect()) { std::cerr << "Motion mailbox unavailable (already running or no private runtime directory).\n"; return 75; }
     Dashboard dashboard(root / "assets/InterVariable.ttf");
+    DriverSetup driverSetup(root / "treadmill.sh");
     VROverlayHandle_t main = 0, thumb = 0;
     auto& api = *vr.overlay;
     const auto result = api.CreateDashboardOverlay(appKey, "FrameStride", &main, &thumb);
@@ -397,6 +400,10 @@ int run(const fs::path& root, bool showDashboard) {
                 std::lock_guard hold(shared.mutex);
                 dashboard.pointer(event.data.mouse.x, Dashboard::height - event.data.mouse.y,
                                   event.eventType == VREvent_MouseButtonDown, event.eventType == VREvent_MouseButtonUp, shared.state);
+            }
+            {
+                std::lock_guard hold(shared.mutex);
+                driverSetup.poll(shared.state.driver);
             }
             const bool displayed = api.IsOverlayVisible(main);
             if (visible && !displayed) {

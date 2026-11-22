@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core.hpp"
+#include "driver_setup.hpp"
 #include "ipc.hpp"
 
 #include <filesystem>
@@ -26,6 +27,7 @@ struct PanelState {
     Settings settings;
     View view;
     Calibration calibration;
+    DriverSetupState driver;
     std::string error;
     bool changed = false;
     bool stop = false;

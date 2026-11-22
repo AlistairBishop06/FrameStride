@@ -63,7 +63,7 @@ public:
 
     void run(const Packet& motion, std::uint64_t now) {
         if (!isActivated()) return;
-        if (standby_ || motion.timestamp <= resumeAfter_ || motion.has(XrSelected)) {
+        if (standby_ || motion.timestamp <= resumeAfter_ || motion.has(XrSelected) || motion.has(TreadmillSuppressed)) {
             disconnect();
             return;
         }
@@ -134,7 +134,7 @@ public:
         if (standby_ || VRServerDriverHost()->IsExiting()) return;
         const auto now = clockMilliseconds();
         const auto motion = motion_.read(now);
-        if (!registered_ && motion.timestamp && !motion.has(XrSelected) && now >= nextRegistration_) {
+        if (!registered_ && motion.timestamp && !motion.has(XrSelected) && !motion.has(TreadmillSuppressed) && now >= nextRegistration_) {
             nextRegistration_ = now + 2000;
             if (VRDriverInput()) {
                 registered_ = VRServerDriverHost()->TrackedDeviceAdded(serial, TrackedDeviceClass_Controller, &device_);

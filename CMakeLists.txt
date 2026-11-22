@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FrameStride VERSION 1.0.2 LANGUAGES CXX)
+project(FrameStride VERSION 1.0.3 LANGUAGES CXX)
 
 include(CTest)
 set(CMAKE_CXX_STANDARD 20)
@@ -27,7 +27,7 @@ if(FRAMESTRIDE_NATIVE)
     add_library(stride_ipc STATIC src/ipc.cpp)
     target_include_directories(stride_ipc PUBLIC src)
 
-    add_library(stride_dashboard STATIC src/dashboard.cpp)
+    add_library(stride_dashboard STATIC src/dashboard.cpp src/driver_setup.cpp)
     target_include_directories(stride_dashboard SYSTEM PRIVATE "${FRAMESTRIDE_DEPS}")
     target_link_libraries(stride_dashboard PUBLIC stride_core stride_ipc)
 

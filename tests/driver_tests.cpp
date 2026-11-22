@@ -146,6 +146,8 @@ void run(const char* library) {
     };
     publish(0, XrSelected);
     check(context.host.additions == 0, "OpenXR selection activated the treadmill");
+    publish(.6f, Ready | Tracking | TreadmillSuppressed);
+    check(context.host.additions == 0, "unregistered treadmill was activated");
     publish(0, 0);
     check(context.host.additions == 1 && context.host.connected, "FrameStride opening did not connect the treadmill");
     check(context.properties.role == TrackedControllerRole_Treadmill && !provider->ShouldBlockStandbyMode(), "incorrect controller role or standby behavior");
@@ -153,6 +155,9 @@ void run(const char* library) {
     publish(.6f, Ready | Tracking);
     pushed(.6f);
     check(status.read(clockMilliseconds()).has(Submitted), "successful SteamVR submission was not reported");
+    publish(.6f, Ready | Tracking | TreadmillSuppressed);
+    pushed(0);
+    check(!context.host.connected, "removing the registration left a live treadmill connected");
     publish(.6f, Tracking);
     pushed(0);
     publish(.6f, Ready | Tracking | XrSelected);

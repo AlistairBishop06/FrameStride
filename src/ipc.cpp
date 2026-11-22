@@ -66,7 +66,7 @@ bool Mailbox::connect(std::uint64_t now) {
     if (dir < 0) return false;
     struct stat status{};
     const bool privateDir = fstat(dir, &status) == 0 && status.st_uid == uid && (status.st_mode & 077) == 0;
-    constexpr const char* names[] = {"motion.v2", "driver.v2", "openxr.v2"};
+    constexpr const char* names[] = {"motion.v3", "driver.v3", "openxr.v3"};
     const int fd = privateDir ? openat(dir, names[static_cast<unsigned>(channel_)],
                                       (writer_ ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
                                       0600) : -1;
