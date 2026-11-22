@@ -179,6 +179,7 @@ private:
 void track(Runtime& vr, Shared& shared, const fs::path& config, InputBackend& backend) {
     Detector detector;
     MotionTracker tracking;
+    auto previousStage = Calibration::Stage::Idle;
     bool startArmed, wasEnabled = false;
     {
         std::lock_guard hold(shared.mutex);
@@ -225,20 +226,14 @@ void track(Runtime& vr, Shared& shared, const fs::path& config, InputBackend& ba
             if (!settings.startup || state.cancelStartup || state.calibration.active() || state.stop) startArmed = false;
             if (startArmed && connected) { view.armed = true; startArmed = false; }
             if (!connected) view.armed = false;
-            if (wasEnabled != view.armed) detector.reset();
+            const auto stage = state.calibration.stage();
+            if (wasEnabled != view.armed || stage != previousStage) detector.reset();
             wasEnabled = view.armed;
-            Settings detection = settings;
-            if (state.calibration.active()) {
-                detection.activation = 0.0015;
-                detection.noise = 0.0002;
-            }
-            const auto motion = detector.update(pose, detection);
-            const bool calibrated = state.calibration.stage() == Calibration::Stage::Complete;
+            previousStage = stage;
+            const auto motion = state.calibration.measure(detector, pose, settings);
             state.calibration.update(seconds, motion, state.settings);
-            if (!calibrated && state.calibration.stage() == Calibration::Stage::Complete) {
+            if (stage != Calibration::Stage::Complete && state.calibration.stage() == Calibration::Stage::Complete)
                 state.changed = true;
-                detector.reset();
-            }
             float physicalY = 0;
             bool shortcut = false;
             const bool checkController = settings.controllerStop || (!settings.openxr && settings.physicalOverride);

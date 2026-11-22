@@ -8,6 +8,8 @@
 
 namespace stride {
 
+inline constexpr double minimumMotionAmplitude = 0.0012;
+
 struct Settings {
     double sensitivity = 1.0;
     double activation = 0.0035;
@@ -87,6 +89,8 @@ public:
     void start(double now);
     void cancel();
     void update(double now, const Motion& motion, Settings& settings);
+    void finishWithoutJog(Settings& settings);
+    Motion measure(Detector& detector, const Pose& pose, Settings settings) const;
     bool active() const;
     double remaining(double now) const;
     Stage stage() const { return stage_; }
@@ -94,13 +98,18 @@ public:
 
 private:
     void fail(std::string message);
+    void beginStage(Stage stage, double now, std::string message);
+    void save(Settings& settings, double runAmplitude, double runCadence, std::string message);
     Stage stage_ = Stage::Idle;
     double since_ = 0;
+    double lastUpdate_ = 0;
     double lastSample_ = 0;
+    double trackedSeconds_ = 0;
+    double rhythmicSeconds_ = 0;
     double noise_ = 0;
     double walkAmplitude_ = 0;
     double walkCadence_ = 0;
-    unsigned samples_ = 0;
+    unsigned rhythmicSteps_ = 0;
     std::vector<double> amplitudes_, cadences_;
     std::string message_;
 };

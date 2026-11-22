@@ -104,32 +104,72 @@ void motionTests() {
 }
 
 void calibrationTests(const std::filesystem::path& root) {
-    Trace trace;
-    Calibration calibration;
-    calibration.start(trace.time);
-    const auto start = trace.time;
-    for (int i = 0; i < 1630; ++i) {
-        const double seconds = trace.time - start;
-        const double amplitude = seconds < 5 ? 0.0004 : seconds < 15 ? 0.014 : 0.031;
-        const double frequency = seconds < 5 ? 2.3 : seconds < 15 ? 1.83 : 2.85;
-        const auto frame = trace.sample(1.7 + amplitude * std::sin(2 * pi * seconds * frequency));
-        calibration.update(trace.time, frame, trace.settings);
-    }
-    require(calibration.stage() == Calibration::Stage::Complete && trace.settings.calibrated, "calibration failed on good data");
-    require(trace.settings.runCadence > trace.settings.walkCadence, "calibration did not separate walking from jogging");
+    using Stage = Calibration::Stage;
+    auto calibrate = [](double hz, double walk, double jog, bool drops, bool skip, Settings& settings) {
+        Calibration calibration;
+        Detector detector;
+        double time = 100, phaseStart = time;
+        calibration.start(time);
+        auto previous = Stage::Idle;
+        for (int i = 0; calibration.active() && time < 130; ++i) {
+            const auto stage = calibration.stage();
+            if (stage != previous) {
+                phaseStart = time;
+                detector.reset();
+                previous = stage;
+            }
+            if (stage == Stage::Jog && skip) {
+                calibration.finishWithoutJog(settings);
+                break;
+            }
+            const double seconds = time - phaseStart;
+            const double amplitude = stage == Stage::Still ? 0.00025 : stage == Stage::Walk ? walk : jog;
+            const double frequency = stage == Stage::Jog && jog > walk ? 2.85 : 1.83;
+            const double y = 1.7 + amplitude * std::sin(2 * pi * seconds * frequency) + 0.00015 * std::sin(71 * seconds);
+            const bool valid = !drops || (i % 39 != 1 && i % 39 != 2);
+            const auto frame = calibration.measure(detector, {time, y, 0, valid}, settings);
+            if (!valid) require(!frame.tracking && frame.stick == 0, "calibration treated an invalid pose as active");
+            calibration.update(time, frame, settings);
+            time += (1 + (drops ? 0.09 * std::sin(i) : 0)) / hz;
+        }
+        return calibration;
+    };
+    Settings settings;
+    const auto measured = calibrate(80, 0.014, 0.031, false, false, settings);
+    require(measured.stage() == Stage::Complete && settings.calibrated, "calibration failed on good data");
+    require(settings.runCadence > settings.walkCadence && measured.message().find("estimated") == std::string::npos,
+            "calibration did not measure a distinct jogging phase");
+
+    Settings lightSteps;
+    const auto partial = calibrate(48, 0.003, 0, true, false, lightSteps);
+    require(partial.stage() == Stage::Complete && lightSteps.calibrated && lightSteps.walkAmplitude < 0.004,
+            "shallow steps, jitter, or brief tracking drops prevented walking calibration");
+    require(partial.message().find("estimated") != std::string::npos, "missing jogging should estimate a range");
+    require(lightSteps.activation == minimumMotionAmplitude, "shallow calibration did not lower the movement threshold");
+
+    Settings walkingOnly;
+    const auto skipped = calibrate(49, .009, 0, false, true, walkingOnly);
+    require(skipped.stage() == Stage::Complete && walkingOnly.calibrated, "skipping jogging discarded walking calibration");
+    const auto unmoving = calibrate(49, 0, 0, false, false, walkingOnly);
+    require(unmoving.stage() == Stage::Failed && unmoving.message().find("rhythm") != std::string::npos && walkingOnly.calibrated,
+            "standing still was accepted as walking or obscured the reason for failure");
     const auto path = root / "settings.json";
     std::string error;
-    require(saveSettings(path, trace.settings, error), "calibration could not be persisted");
+    require(saveSettings(path, lightSteps, error), "calibration could not be persisted");
     const auto restored = loadSettings(path, error);
-    require(error.empty() && restored.calibrated && restored.walkCadence == trace.settings.walkCadence, "calibration did not round trip");
+    require(error.empty() && restored.calibrated && restored.walkCadence == lightSteps.walkCadence &&
+            restored.activation == lightSteps.activation, "calibration did not round trip");
     std::ofstream(path) << "{\"schema\":1,\"sensitivity\":999,\"minimum_output\":0.4,\"maximum_output\":0.1,\"game_only\":0}";
     const auto clamped = loadSettings(path, error);
     require(clamped.sensitivity == 3 && clamped.minimum == clamped.maximum && clamped.gameOnly, "invalid field was not safely handled");
     std::ofstream(path) << "{unclosed";
     require(loadSettings(path, error).sensitivity == 1 && !error.empty(), "invalid JSON did not fall back safely");
-    calibration.start(200);
-    calibration.update(205.1, {}, trace.settings);
-    require(calibration.stage() == Calibration::Stage::Failed && trace.settings.calibrated, "bad recalibration discarded prior settings");
+    Calibration lost;
+    lost.start(200);
+    lost.update(205.1, {}, settings);
+    require(lost.stage() == Stage::Failed && lost.message().find("tracking") != std::string::npos && settings.calibrated,
+            "tracking failure was obscured or discarded prior settings");
+    std::cout << "Calibration accepts light steps and brief pose drops, estimates jogging if needed, and identifies tracking loss.\n";
 }
 
 void safetyTests(const std::filesystem::path& root) {

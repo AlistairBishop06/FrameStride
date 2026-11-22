@@ -27,7 +27,7 @@ struct Box {
 struct Slider { const char* label; double Settings::*member; double low, high; const char* unit; int precision; };
 constexpr Slider movement[] = {
     {"Sensitivity", &Settings::sensitivity, 0.3, 3, "x", 2},
-    {"Activation threshold", &Settings::activation, 0.0015, 0.025, " mm", 1},
+    {"Activation threshold", &Settings::activation, minimumMotionAmplitude, 0.025, " mm", 1},
     {"Walking speed", &Settings::walkSpeed, 0.1, 1, "%", 0},
     {"Running speed", &Settings::runSpeed, 0.1, 1, "%", 0},
     {"Maximum output", &Settings::maximum, 0.1, 1, "%", 0},
@@ -264,11 +264,14 @@ void Dashboard::draw(const PanelState& state) {
         d.label(31, 155, "Headset-only motion tracking", 24);
         for (unsigned i = 0; i < std::size(tracking); ++i) d.slider(tracking[i], sliderBox(2, i), state.settings);
         d.button(calibration, state.calibration.active() ? "Cancel calibration" : "Start calibration", teal, background);
-        d.button(resetCalibration, "Reset calibration");
-        const auto normal = state.settings.calibrated ? "Calibration is saved. Walk to check the preview." : "Stand, walk and jog in place. Input is disabled during calibration.";
+        d.button(resetCalibration, state.calibration.stage() == Calibration::Stage::Jog ? "Skip jogging" : "Reset calibration");
+        const auto normal = state.settings.calibrated ? "Calibration is saved. Walk to check the preview." : "Stand still, then walk in place. Jogging is optional.";
         d.label(31, 339, state.calibration.message().empty() ? normal : state.calibration.message(), 20);
         if (state.calibration.active()) {
-            d.label(31, 373, number(std::ceil(state.calibration.remaining(clockSeconds()))) + " seconds remaining", 20, teal);
+            std::string progress = number(std::ceil(state.calibration.remaining(clockSeconds()))) + " seconds remaining";
+            progress += motion.tracking ? "   /   Tracking active" : "   /   Tracking unavailable";
+            if (motion.tracking && motion.cadence > 0) progress += "   /   " + number(motion.cadence * 60) + " spm";
+            d.label(31, 373, progress, 20, motion.tracking ? teal : amber);
         }
         d.label(31, 425, "Live stick preview   " + number(motion.stick * 100) + "%", 24, teal);
         d.rect({31, 445, 803, 8}, border);
@@ -342,6 +345,11 @@ void Dashboard::pointer(float x, float y, bool down, bool up, PanelState& state)
         }
         if (d.tab == 2 && resetCalibration.contains(ix, iy)) {
             state.view.armed = false;
+            if (state.calibration.stage() == Calibration::Stage::Jog) {
+                state.calibration.finishWithoutJog(state.settings);
+                state.changed = true;
+                return;
+            }
             state.calibration.cancel();
             const Settings standard;
             state.settings.calibrated = false;

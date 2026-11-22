@@ -12,15 +12,15 @@ using Json = nlohmann::json;
 struct Number { const char* key; double Settings::*field; double lo, hi; };
 constexpr Number numbers[] = {
     {"sensitivity", &Settings::sensitivity, 0.3, 3},
-    {"activation_m", &Settings::activation, 0.0015, 0.025},
+    {"activation_m", &Settings::activation, minimumMotionAmplitude, 0.025},
     {"walk_speed", &Settings::walkSpeed, 0.1, 1}, {"run_speed", &Settings::runSpeed, 0.1, 1},
     {"minimum_output", &Settings::minimum, 0, 0.45}, {"maximum_output", &Settings::maximum, 0.1, 1},
     {"response_curve", &Settings::curve, 0.4, 2.8}, {"acceleration_s", &Settings::accelerate, 0.025, 0.45},
     {"deceleration_s", &Settings::decelerate, 0.015, 0.12}, {"stop_latency_s", &Settings::stopLatency, 0.16, 0.28},
     {"running_threshold", &Settings::runningThreshold, 0.45, 1.4}, {"deadzone", &Settings::deadzone, 0, 0.2},
     {"confidence", &Settings::confidence, 0.45, 0.95}, {"override_threshold", &Settings::overrideThreshold, 0.05, 0.5},
-    {"noise_m", &Settings::noise, 0.00015, 0.003}, {"walk_amplitude_m", &Settings::walkAmplitude, 0.0015, 0.06},
-    {"walk_cadence_hz", &Settings::walkCadence, 0.8, 3.2}, {"run_amplitude_m", &Settings::runAmplitude, 0.0015, 0.074},
+    {"noise_m", &Settings::noise, 0.00015, 0.003}, {"walk_amplitude_m", &Settings::walkAmplitude, minimumMotionAmplitude, 0.06},
+    {"walk_cadence_hz", &Settings::walkCadence, 0.8, 3.2}, {"run_amplitude_m", &Settings::runAmplitude, minimumMotionAmplitude, 0.074},
     {"run_cadence_hz", &Settings::runCadence, 0.8, 3.2},
 };
 struct Toggle { const char* key; bool Settings::*field; };

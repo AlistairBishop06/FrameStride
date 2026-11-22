@@ -11,6 +11,7 @@ namespace {
 constexpr double pi = 3.141592653589793;
 constexpr double minimumPeriod = 1.0 / 3.2;
 constexpr double maximumPeriod = 1.0 / 0.8;
+constexpr double calibrationWarmup = 0.65;
 
 double follow(double previous, double target, double timeConstant, double dt) {
     return previous + (target - previous) * (-std::expm1(-dt / timeConstant));
@@ -27,7 +28,9 @@ double effort(double amplitude, double cadence) {
 }
 
 double duration(Calibration::Stage stage) {
-    return stage == Calibration::Stage::Walk ? 10.0 : 5.0;
+    if (stage == Calibration::Stage::Walk) return 12.0;
+    if (stage == Calibration::Stage::Jog) return 7.0;
+    return 5.0;
 }
 }
 
@@ -176,9 +179,7 @@ Motion Detector::update(const Pose& pose, const Settings& settings) {
 
 void Calibration::start(double now) {
     *this = {};
-    since_ = now;
-    stage_ = Stage::Still;
-    message_ = "Stand still and face forward";
+    beginStage(Stage::Still, now, "Stand still and face forward");
 }
 
 void Calibration::cancel() { *this = {}; }
@@ -196,58 +197,100 @@ void Calibration::fail(std::string message) {
     message_ = std::move(message);
 }
 
+void Calibration::beginStage(Stage stage, double now, std::string message) {
+    stage_ = stage;
+    since_ = lastUpdate_ = now;
+    lastSample_ = trackedSeconds_ = rhythmicSeconds_ = 0;
+    rhythmicSteps_ = 0;
+    amplitudes_.clear();
+    cadences_.clear();
+    message_ = std::move(message);
+}
+
+Motion Calibration::measure(Detector& detector, const Pose& pose, Settings settings) const {
+    if (active()) {
+        // During calibration, skip isolated invalid frames. The detector still
+        // resets on a long gap. Live locomotion handles loss immediately.
+        if (!pose.valid) return {};
+        settings.activation = minimumMotionAmplitude;
+        settings.noise = stage_ == Stage::Still ? 0.0002 : noise_;
+    }
+    return detector.update(pose, settings);
+}
+
+void Calibration::save(Settings& settings, double runAmplitude, double runCadence, std::string message) {
+    settings.noise = noise_;
+    settings.walkAmplitude = walkAmplitude_;
+    settings.walkCadence = std::clamp(walkCadence_, 0.8, 3.2);
+    settings.runAmplitude = std::clamp(runAmplitude, minimumMotionAmplitude, 0.074);
+    settings.runCadence = std::clamp(runCadence, 0.8, 3.2);
+    settings.activation = std::clamp(walkAmplitude_ * 0.38, minimumMotionAmplitude, 0.016);
+    settings.calibrated = true;
+    stage_ = Stage::Complete;
+    message_ = std::move(message);
+}
+
+void Calibration::finishWithoutJog(Settings& settings) {
+    if (stage_ != Stage::Jog) return;
+    save(settings, walkAmplitude_ * 1.6, walkCadence_ * 1.4, "Walking calibration saved. Jogging range estimated.");
+}
+
 void Calibration::update(double now, const Motion& motion, Settings& settings) {
     if (!active()) return;
     const double elapsed = now - since_;
-    if (motion.tracking && elapsed > 0.6 && now - lastSample_ >= 0.024) {
-        lastSample_ = now;
-        ++samples_;
-        if (stage_ == Stage::Still) {
-            amplitudes_.push_back(std::abs(motion.filtered));
-        } else if (elapsed > 2 && motion.confidence >= 0.54 && motion.amplitude > 0) {
-            amplitudes_.push_back(motion.amplitude);
-            cadences_.push_back(motion.cadence);
+    const double span = std::clamp(now - std::max(lastUpdate_, since_ + calibrationWarmup), 0.0, 0.10);
+    lastUpdate_ = now;
+    if (motion.tracking && span > 0) {
+        trackedSeconds_ += span;
+        const bool rhythmic = motion.confidence >= 0.45 && motion.amplitude >= std::max(minimumMotionAmplitude, 3 * noise_) &&
+                              motion.cadence >= 0.78 && motion.cadence <= 3.35;
+        if (rhythmic) {
+            rhythmicSeconds_ += span;
+            if (motion.step) ++rhythmicSteps_;
+        }
+        if ((stage_ == Stage::Still || rhythmic) && now - lastSample_ >= 0.04) {
+            lastSample_ = now;
+            amplitudes_.push_back(stage_ == Stage::Still ? std::abs(motion.filtered) : motion.amplitude);
+            if (stage_ != Stage::Still) cadences_.push_back(motion.cadence);
         }
     }
     if (elapsed < duration(stage_)) return;
-    if (samples_ < static_cast<unsigned>(25 * (duration(stage_) - 0.6)) || amplitudes_.size() < 25) {
-        fail("Too little steady tracking or rhythmic movement. Try again.");
+
+    const bool tracked = trackedSeconds_ >= 0.65 * (duration(stage_) - calibrationWarmup);
+    if (stage_ == Stage::Jog && (!tracked || rhythmicSteps_ < 2 || rhythmicSeconds_ < 0.8)) {
+        finishWithoutJog(settings);
         return;
     }
+    if (!tracked) {
+        fail("Headset tracking dropped out. Face forward and retry.");
+        return;
+    }
+    if (amplitudes_.empty() || (stage_ == Stage::Walk && (rhythmicSteps_ < 2 || rhythmicSeconds_ < 1.3))) {
+        fail("Couldn't detect a steady walking rhythm. Try even steps.");
+        return;
+    }
+
     const double amplitude = median(amplitudes_);
     if (stage_ == Stage::Still) {
-        if (amplitude > 0.0025 || *std::max_element(amplitudes_.begin(), amplitudes_.end()) > 0.022) {
+        const auto large = std::count_if(amplitudes_.begin(), amplitudes_.end(), [](double a) { return a > 0.012; });
+        if (amplitude > 0.0025 || static_cast<std::size_t>(large) * 10 > amplitudes_.size()) {
             fail("Too much movement while standing still. Try again.");
             return;
         }
         noise_ = std::clamp(amplitude * 1.25, 0.00015, 0.003);
-        stage_ = Stage::Walk;
-        message_ = "Walk normally in place";
+        beginStage(Stage::Walk, now, "Walk normally in place with even steps");
     } else if (stage_ == Stage::Walk) {
         walkAmplitude_ = amplitude;
         walkCadence_ = median(cadences_);
-        stage_ = Stage::Jog;
-        message_ = "Jog in place";
+        beginStage(Stage::Jog, now, "Jog in place or choose Skip jogging");
     } else {
         const double cadence = median(cadences_);
         if (effort(amplitude, cadence) < effort(walkAmplitude_, walkCadence_) * 1.16) {
-            fail("Jogging was too close to walking. Try again.");
-            return;
+            finishWithoutJog(settings);
+        } else {
+            save(settings, amplitude, cadence, "Calibration saved. Try the live stick preview.");
         }
-        settings.noise = noise_;
-        settings.walkAmplitude = walkAmplitude_;
-        settings.walkCadence = std::clamp(walkCadence_, 0.8, 3.2);
-        settings.runAmplitude = amplitude;
-        settings.runCadence = std::clamp(cadence, 0.8, 3.2);
-        settings.activation = std::clamp(walkAmplitude_ * 0.38, 0.0015, 0.016);
-        settings.calibrated = true;
-        stage_ = Stage::Complete;
-        message_ = "Calibration saved. Try the live stick preview.";
     }
-    since_ = now;
-    samples_ = 0;
-    amplitudes_.clear();
-    cadences_.clear();
 }
 
 Axes merge(Axes physical, float forward, bool physicalOverride, float threshold) {

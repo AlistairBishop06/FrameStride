@@ -2,7 +2,7 @@
 
 FrameStride converts rhythmic headset movement into continuously variable forward input for smooth-locomotion VR games. It samples the Steam Frame headset pose at 80 Hz, estimates step cadence and amplitude, and maps that motion to analogue output using your calibration. It uses the headset's existing tracking. The dashboard runs inside SteamVR and accepts controller laser-pointer input.
 
-**Version 1.0.1 launches on demand from the Steam Frame dashboard.** Installation adds a shortcut and leaves the optional SteamVR treadmill driver unregistered. The previous automatic startup is removed during upgrade. The manual-launch build still requires on-device validation. See the [input guide](docs/INPUT.md) for the two input routes and their coverage.
+**Version 1.0.2 launches on demand from the Steam Frame dashboard.** Installation adds a shortcut and leaves the optional SteamVR treadmill driver unregistered. The previous automatic startup is removed during upgrade. The manual-launch build still requires on-device validation. See the [input guide](docs/INPUT.md) for the two input routes and their coverage.
 
 ## Install on the Frame over RDP
 
@@ -20,11 +20,11 @@ Return to the headset’s dashboard and select **+ → Launch Application → Fr
 
 On the Frame, turn on **Steam Settings → System → Enable Developer Mode** and set a user password in **Developer**. The Windows PC and headset need to be reachable on the same network. The installer uses the Windows OpenSSH `ssh.exe` and `scp.exe` clients. [Valve’s Steam Frame setup guide](https://partner.steamgames.com/doc/steamhardware/steamframe/setup)
 
-Download `framestride-1.0.1-linux-aarch64.tar.gz` and `SHA256SUMS` from the release. Compare the archive hash with `Get-FileHash -Algorithm SHA256 .\framestride-1.0.1-linux-aarch64.tar.gz`. Extract the archive and run the installer from the directory holding both the archive and the extracted folder.
+Download `framestride-1.0.2-linux-aarch64.tar.gz` and `SHA256SUMS` from the release. Compare the archive hash with `Get-FileHash -Algorithm SHA256 .\framestride-1.0.2-linux-aarch64.tar.gz`. Extract the archive and run the installer from the directory holding both the archive and the extracted folder.
 
 ```powershell
-tar -xzf .\framestride-1.0.1-linux-aarch64.tar.gz
-powershell -NoProfile -ExecutionPolicy Bypass -File .\framestride-1.0.1-linux-aarch64\install.ps1
+tar -xzf .\framestride-1.0.2-linux-aarch64.tar.gz
+powershell -NoProfile -ExecutionPolicy Bypass -File .\framestride-1.0.2-linux-aarch64\install.ps1
 ```
 
 Pass `-Target <Frame IPv4 address>` if the name `frame` fails. The script uploads the archive and runs the Linux installer as `steamos`. Open FrameStride from **+ → Launch Application** in the headset.
@@ -35,8 +35,8 @@ Enable Developer Mode and open a terminal on the Frame or SSH to it as `steamos`
 
 ```sh
 sha256sum -c SHA256SUMS
-tar -xzf framestride-1.0.1-linux-aarch64.tar.gz
-cd framestride-1.0.1-linux-aarch64
+tar -xzf framestride-1.0.2-linux-aarch64.tar.gz
+cd framestride-1.0.2-linux-aarch64
 ./install.sh
 ```
 
@@ -44,7 +44,7 @@ Launch FrameStride from the dashboard’s **+** menu with SteamVR running. **Set
 
 ## Calibrate and test
 
-1. Open **Tracking → Start calibration**. Stand still for five seconds, walk normally in place for ten, and jog in place for five. Keep a clear play space and face forward. The wizard keeps synthetic output at neutral while you calibrate.
+1. Open **Tracking → Start calibration**. Stand still for five seconds and walk normally in place for twelve. Jog for seven seconds or choose **Skip jogging** to save walking calibration with an estimated jogging range. Keep a clear play space and face forward. The wizard keeps synthetic output at neutral while you calibrate.
 2. Check the **Live stick preview**. You can repeat calibration while using the previous saved calibration if a new run fails. **Movement** controls sensitivity, speeds, the response curve, smoothing and the stop limit. **Input Test** shows the live headset signal, steps, output submitted by the backend and the age of its last update.
 3. Choose a game input route. SteamVR Input requires explicitly registering the optional treadmill driver and restarting SteamVR. The OpenXR layer is enabled per compatible native game. [Driver setup, binding steps and OpenXR configuration](docs/INPUT.md)
 4. In **Overview**, select **Enable locomotion** and close the dashboard. Walk, stop, then test physical backwards movement and strafing. Confirm the character reacts to each test. The **Emergency stop** button disarms locomotion from any tab. With the default settings, opening the SteamVR dashboard also pauses output.
@@ -59,7 +59,7 @@ For a backend check in Konsole or over SSH, run the following command with the h
 
 ## Update and uninstall
 
-Rerun the release command in Konsole for the latest published version. For a specific release, pass its tag to the installer, for example `| bash -s -- v1.0.1` at the end of the command. Installation clears a previous treadmill registration. For treadmill testing after an update, register it again and restart SteamVR. Settings and calibration are stored in `~/.config/framestride/settings.json` and persist across updates and uninstallations.
+Rerun the release command in Konsole for the latest published version. For a specific release, pass its tag to the installer, for example `| bash -s -- v1.0.2` at the end of the command. Installation clears a previous treadmill registration. For treadmill testing after an update, register it again and restart SteamVR. Settings and calibration are stored in `~/.config/framestride/settings.json` and persist across updates and uninstallations.
 
 ```sh
 ~/.local/share/framestride/uninstall.sh
@@ -109,7 +109,7 @@ cmake -S . -B build-frame -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/zig-linux.cmake 
 cmake --build build-frame
 cmake --install build-frame --prefix build-frame/stage
 python3 scripts/package.py build-frame/stage dist
-bash tests/install_test.sh dist/framestride-1.0.1-linux-aarch64.tar.gz
+bash tests/install_test.sh dist/framestride-1.0.2-linux-aarch64.tar.gz
 ```
 
 The tests use synthetic headset motion and mock OpenVR and OpenXR runtimes. The package check validates all three ELF architectures, verifies archive contents after extraction, and exercises install, update and uninstall with isolated registration and service test doubles. Measure CPU and power on a real headset with the dashboard closed and open. Headset resource usage is awaiting measurement.
