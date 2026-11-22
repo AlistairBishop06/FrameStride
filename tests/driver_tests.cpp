@@ -74,7 +74,9 @@ struct Properties final : IVRProperties {
 
 struct Host final : IVRServerDriverHost {
     bool connected = false;
+    unsigned additions = 0;
     bool TrackedDeviceAdded(const char*, ETrackedDeviceClass deviceClass, ITrackedDeviceServerDriver* device) override {
+        ++additions;
         return deviceClass == TrackedDeviceClass_Controller && device->Activate(5) == VRInitError_None;
     }
     void TrackedDevicePoseUpdated(uint32_t, const DriverPose_t& pose, uint32_t) override { connected = pose.deviceIsConnected; }
@@ -96,9 +98,10 @@ struct Context final : IVRDriverContext {
     Host host;
     Properties properties;
     DriverLog log;
+    bool hasInput = true;
     void* GetGenericInterface(const char* name, EVRInitError* code) override {
         if (code) *code = VRInitError_None;
-        if (std::strcmp(name, IVRDriverInput_Version) == 0) return &input;
+        if (std::strcmp(name, IVRDriverInput_Version) == 0) return hasInput ? &input : nullptr;
         if (std::strcmp(name, IVRServerDriverHost_Version) == 0) return &host;
         if (std::strcmp(name, IVRProperties_Version) == 0) return &properties;
         if (std::strcmp(name, IVRDriverLog_Version) == 0) return &log;
@@ -121,9 +124,18 @@ void run(const char* library) {
     auto* provider = static_cast<IServerTrackedDeviceProvider*>(factory(IServerTrackedDeviceProvider_Version, &code));
     check(provider && code == VRInitError_None, "missing OpenVR server provider");
     Context context;
-    check(provider->Init(&context) == VRInitError_None && context.host.connected, "treadmill device did not connect");
-    check(context.properties.role == TrackedControllerRole_Treadmill && !provider->ShouldBlockStandbyMode(), "incorrect controller role or standby behavior");
     Mailbox writer(Channel::Motion, true), status(Channel::Driver, false);
+    context.hasInput = false;
+    check(provider->Init(&context) == VRInitError_None, "provider could not start without the input interface");
+    check(writer.write(0, .13f, 0, clockMilliseconds()), "could not publish app heartbeat");
+    provider->RunFrame();
+    check(context.host.additions == 0, "driver registered a device without input interface");
+    writer.disconnect();
+    provider->Cleanup();
+    context.hasInput = true;
+    check(provider->Init(&context) == VRInitError_None && !context.host.connected, "provider connected during initialization");
+    provider->RunFrame();
+    check(context.host.additions == 0, "driver registered a device before FrameStride opened");
     auto publish = [&](float value, unsigned flags) {
         check(writer.write(value, .13f, flags, clockMilliseconds()), "failed to supply driver test input");
         provider->RunFrame();
@@ -132,6 +144,12 @@ void run(const char* library) {
         check(context.input.x == 0 && std::abs(context.input.y - expected) < .002f, "incorrect SteamVR scalar submitted");
         check(context.input.touch == (expected > 0), "incorrect synthetic touch state");
     };
+    publish(0, XrSelected);
+    check(context.host.additions == 0, "OpenXR selection activated the treadmill");
+    publish(0, 0);
+    check(context.host.additions == 1 && context.host.connected, "FrameStride opening did not connect the treadmill");
+    check(context.properties.role == TrackedControllerRole_Treadmill && !provider->ShouldBlockStandbyMode(), "incorrect controller role or standby behavior");
+    pushed(0);
     publish(.6f, Ready | Tracking);
     pushed(.6f);
     check(status.read(clockMilliseconds()).has(Submitted), "successful SteamVR submission was not reported");
@@ -139,6 +157,7 @@ void run(const char* library) {
     pushed(0);
     publish(.6f, Ready | Tracking | XrSelected);
     pushed(0);
+    check(!context.host.connected, "treadmill stayed connected after switching to OpenXR");
     publish(.6f, Ready);
     pushed(0);
     publish(.9f, Ready | Tracking);
@@ -161,6 +180,12 @@ void run(const char* library) {
     std::this_thread::sleep_for(130ms);
     provider->RunFrame();
     pushed(0);
+    check(!context.host.connected, "treadmill stayed connected after heartbeat expiry");
+    publish(.6f, Ready | Tracking);
+    writer.disconnect();
+    provider->RunFrame();
+    pushed(0);
+    check(!context.host.connected && context.host.additions == 1, "closing FrameStride did not disconnect the same treadmill");
     publish(.6f, Ready | Tracking);
     provider->Cleanup();
     pushed(0);
@@ -181,5 +206,5 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::filesystem::remove_all(runtime);
-    std::cout << "PASS: OpenVR treadmill registration, scalar submission, errors, standby, watchdog and unload\n";
+    std::cout << "PASS: OpenVR boot without a device, manual connection, scalar submission, standby, watchdog and unload\n";
 }

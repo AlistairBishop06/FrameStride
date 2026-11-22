@@ -7,6 +7,8 @@ data=${XDG_DATA_HOME:-$HOME/.local/share}
 config=${XDG_CONFIG_HOME:-$HOME/.config}
 root=$data/framestride
 service=$config/systemd/user/framestride.service
+autostart=$config/systemd/user/default.target.wants/framestride.service
+launcher=$data/applications/framestride.desktop
 xrdir=$config/openxr/1/api_layers/implicit.d
 xrmanifest=$xrdir/framestride.json
 unit=framestride.service
@@ -29,19 +31,9 @@ case "$root:$config" in
     *$'\n'*|*$'\r'*|*$'\t'*) echo 'Install paths cannot contain control whitespace.' >&2; exit 1;;
 esac
 
-find_registrar() {
-    local candidate
-    for candidate in "${FRAMESTRIDE_VRPATHREG:-}" /opt/steamvr/bin/vrpathreg.sh \
-        /opt/steamvr/bin/linuxarm64/vrpathreg \
-        "$HOME/.local/share/Steam/steamapps/common/SteamVR/bin/vrpathreg.sh"; do
-        if [[ -x $candidate ]]; then printf '%s\n' "$candidate"; return 0; fi
-    done
-    command -v vrpathreg
-}
-registrar=$(find_registrar) || { echo 'SteamVR driver registration tool could not be located.' >&2; exit 1; }
 systemctl --user show-environment >/dev/null || { echo 'Open Konsole in the logged-in SteamOS session as steamos and rerun the installer.' >&2; exit 1; }
 
-mkdir -p -- "$data" "$config/framestride" "$(dirname "$service")" "$xrdir"
+mkdir -p -- "$data/applications" "$config/framestride" "$(dirname "$service")" "$xrdir"
 exec 9>"$config/framestride/.install.lock"
 flock -x 9
 if [[ -e $root && ! -f $root/.framestride-install ]]; then
@@ -51,22 +43,13 @@ if [[ -L $root ]]; then echo "Invalid installation path $root" >&2; exit 1; fi
 staging=$(mktemp -d "$data/.framestride-install.XXXXXXXX")
 old=''
 replaced=false
-registered=false
 complete=false
 cleanup() {
     local status=$?
     if $replaced && ! $complete; then
-        if [[ -n $old ]]; then
-            systemctl --user stop "$unit" 2>/dev/null || true
-        else
-            systemctl --user disable --now "$unit" 2>/dev/null || true
-        fi
-        if [[ -z $old ]] && $registered; then
-            "$registrar" removedriver "$root/driver/framestride" 2>/dev/null || true
-        fi
         rm -rf -- "$root"
         if [[ -n $old ]]; then mv -- "$old" "$root"; fi
-        for file in "$service" "$xrmanifest"; do
+        for file in "$service" "$xrmanifest" "$launcher"; do
             if [[ -e $staging/previous/${file##*/} ]]; then
                 mv -f -- "$staging/previous/${file##*/}" "$file"
             else
@@ -75,14 +58,13 @@ cleanup() {
             rm -f -- "$file.tmp"
         done
         systemctl --user daemon-reload 2>/dev/null || true
-        if [[ -n $old && -f $service ]]; then systemctl --user start "$unit" 2>/dev/null || true; fi
     fi
     rm -rf -- "$staging"
     return "$status"
 }
 trap cleanup EXIT
 mkdir "$staging/app" "$staging/previous"
-for file in "$service" "$xrmanifest"; do
+for file in "$service" "$xrmanifest" "$launcher"; do
     if [[ -e $file ]]; then cp -a -- "$file" "$staging/previous/"; fi
 done
 stageapp=$staging/app
@@ -92,28 +74,30 @@ install -m 644 "$here/README.md" "$here/LICENSE" "$stageapp/"
 install -Dm 644 "$here/docs/INPUT.md" "$stageapp/docs/INPUT.md"
 cp -a -- "$here/licenses" "$stageapp/"
 touch "$stageapp/.framestride-install"
-if [[ -f $service ]]; then systemctl --user stop "$unit"; fi
+legacy=false
+if [[ -L $autostart ]] || { [[ -f $service ]] && grep -qx 'WantedBy=default.target' "$service"; }; then
+    legacy=true
+    systemctl --user disable --now "$unit"
+elif [[ -f $service ]]; then
+    systemctl --user stop "$unit"
+fi
+if $legacy || [[ -f $root/.treadmill-registered ]]; then
+    (source "$stageapp/treadmill.sh"; registration removedriver)
+    rm -f -- "$root/.treadmill-registered"
+    echo 'Restart SteamVR to unload the previously registered FrameStride driver.'
+fi
 if [[ -d $root ]]; then
     old=$(mktemp -d "$data/.framestride-previous.XXXXXXXX")
     rmdir -- "$old"
     mv -- "$root" "$old"
 fi
 if ! mv -- "$stageapp" "$root"; then
-    if [[ -n $old ]]; then mv -- "$old" "$root"; systemctl --user start "$unit" || true; fi
+    if [[ -n $old ]]; then mv -- "$old" "$root"; fi
     exit 1
 fi
 replaced=true
 if [[ ! -e $config/framestride/settings.json ]]; then
     install -m 600 "$root/default-settings.json" "$config/framestride/settings.json"
-fi
-
-if "$registrar" adddriver "$root/driver/framestride"; then
-    registered=true
-else
-    if ! "$registrar" show 2>/dev/null | sed 's/^[[:space:]]*//' | grep -Fx -- "$root/driver/framestride" >/dev/null; then
-        echo 'SteamVR driver registration failed.' >&2
-        exit 1
-    fi
 fi
 
 escaped=${root//\\/\\\\}
@@ -138,22 +122,29 @@ service_path=${service_path//\$/\$\$}
 cat >"$service.tmp" <<EOF
 [Unit]
 Description=FrameStride SteamVR dashboard and locomotion engine
-StartLimitIntervalSec=0
+After=steamvr.service
+Requisite=steamvr.service
+StopPropagatedFrom=steamvr.service
 
 [Service]
 Type=simple
-ExecStart="$service_path/framestride"
-Restart=on-failure
-RestartSec=8
+ExecStart="$service_path/framestride" --open-dashboard
 TimeoutStopSec=2
-
-[Install]
-WantedBy=default.target
 EOF
 mv -f -- "$service.tmp" "$service"
+cat >"$launcher.tmp" <<EOF
+[Desktop Entry]
+Type=Application
+Name=FrameStride
+Comment=Open the FrameStride walk-in-place dashboard
+Exec=systemctl --user start framestride.service
+Icon=${root//\\/\\\\}/assets/icon.png
+Terminal=false
+Categories=Utility;
+EOF
+mv -f -- "$launcher.tmp" "$launcher"
 systemctl --user daemon-reload
-systemctl --user enable --now "$unit"
 complete=true
 if [[ -n $old ]]; then rm -rf -- "$old"; fi
 printf '\nInstalled FrameStride in %s\n' "$root"
-echo 'Restart SteamVR so the driver loads, then open FrameStride in its dashboard.'
+echo 'In the Steam Frame dashboard, select + (Launch Application), then FrameStride.'

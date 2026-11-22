@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FrameStride VERSION 1.0.0 LANGUAGES CXX)
+project(FrameStride VERSION 1.0.1 LANGUAGES CXX)
 
 include(CTest)
 set(CMAKE_CXX_STANDARD 20)
@@ -66,6 +66,7 @@ if(FRAMESTRIDE_NATIVE)
     install(DIRECTORY packaging/probe packaging/assets DESTINATION payload)
     install(FILES "${FRAMESTRIDE_DEPS}/InterVariable.ttf" DESTINATION payload/assets)
     install(FILES packaging/framestride.vrmanifest packaging/default-settings.json DESTINATION payload)
+    install(PROGRAMS scripts/treadmill.sh DESTINATION payload)
     install(FILES README.md LICENSE DESTINATION .)
     install(FILES docs/INPUT.md DESTINATION docs)
     install(FILES "${FRAMESTRIDE_DEPS}/openvr-LICENSE" "${FRAMESTRIDE_DEPS}/json-LICENSE"

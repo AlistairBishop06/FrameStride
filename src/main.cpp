@@ -276,7 +276,7 @@ void track(Runtime& vr, Shared& shared, const fs::path& config, InputBackend& ba
         if (next < clock) next = clock + 12500us;
         std::this_thread::sleep_until(next);
     }
-    backend.send(0, {}, 0, clockMilliseconds());
+    backend.send(0, {}, 0, 0);
     {
         std::lock_guard hold(shared.mutex);
         if (saveAt > 0 || shared.state.changed) saveSettings(config, shared.state.settings, shared.state.error);
@@ -361,7 +361,7 @@ int probe(const fs::path& root) {
     return stopped ? 0 : 1;
 }
 
-int run(const fs::path& root) {
+int run(const fs::path& root, bool showDashboard) {
     Runtime vr(VRApplication_Overlay);
     if (!vr.system || !vr.overlay) { std::cerr << "SteamVR not ready. " << vr.message << '\n'; return 75; }
     NativeBackend backend;
@@ -430,6 +430,7 @@ int run(const fs::path& root) {
                         errorLogged = true;
                     }
                     lastFrame = time;
+                    if (initial && showDashboard && error == VROverlayError_None) api.ShowDashboard(appKey);
                     initial = false;
                 }
             }
@@ -458,8 +459,8 @@ int main(int argc, char** argv) {
         if (arg == "--doctor") return doctor();
         if (arg == "--probe") return probe(root);
         if (arg == "--register" || arg == "--unregister") return registerApp(root / "framestride.vrmanifest", arg == "--unregister");
-        if (arg.empty()) return run(root);
-        std::cerr << "Usage: framestride [--version|--doctor|--probe|--register|--unregister]\n";
+        if (arg.empty() || arg == "--open-dashboard") return run(root, arg == "--open-dashboard");
+        std::cerr << "Usage: framestride [--open-dashboard|--version|--doctor|--probe|--register|--unregister]\n";
     } catch (const std::exception& ex) { std::cerr << "FrameStride: " << ex.what() << '\n'; }
     return 2;
 }

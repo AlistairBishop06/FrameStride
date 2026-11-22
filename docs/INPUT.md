@@ -4,6 +4,14 @@
 
 The native ARM64 driver registers a controller in SteamVR’s treadmill role. It publishes an absolute two-sided joystick vector with X at zero and a forward Y proportional to walking effort. The two Frame Controllers keep their hand roles. The driver owns the treadmill input components and has no API access to write the components owned by Valve's Frame Controller driver. SteamVR resolves sources bound to the same action by magnitude, so each game and restriction path needs testing. [Valve driver API](https://github.com/ValveSoftware/openvr/blob/v2.15.6/docs/Driver_API_Documentation.md)
 
+The standard install leaves this driver unregistered. Test the **+ → Launch Application → FrameStride** shortcut first. To opt into treadmill testing, run this in Konsole as `steamos`, restart SteamVR, and then launch FrameStride. The driver waits for the open FrameStride app before adding a virtual controller and disconnects it when FrameStride closes or switches to OpenXR.
+
+```sh
+~/.local/share/framestride/treadmill.sh enable
+```
+
+Run `~/.local/share/framestride/treadmill.sh disable` and restart SteamVR to remove the registration. A new installation or upgrade also clears an earlier registration.
+
 ### Bind a game's movement action
 
 1. Launch the game through native SteamVR and choose **Smooth** or **Continuous Locomotion** in the game.

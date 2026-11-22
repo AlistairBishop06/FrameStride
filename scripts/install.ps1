@@ -6,7 +6,11 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (!$Archive) {
-    $name = 'framestride-1.0.0-linux-aarch64.tar.gz'
+    $folder = Split-Path $PSScriptRoot -Leaf
+    if ($folder -notmatch '^framestride-\d+\.\d+\.\d+-linux-aarch64$') {
+        throw 'Pass the downloaded .tar.gz using -Archive.'
+    }
+    $name = "$folder.tar.gz"
     $Archive = Join-Path $PSScriptRoot $name
     if (!(Test-Path -LiteralPath $Archive -PathType Leaf)) {
         $Archive = Join-Path (Split-Path $PSScriptRoot -Parent) $name

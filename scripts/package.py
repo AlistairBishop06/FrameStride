@@ -17,7 +17,7 @@ REQUIRED = {
     'licenses/openvr-LICENSE', 'licenses/openxr-LICENSE', 'licenses/json-LICENSE',
     'licenses/Inter-LICENSE', 'licenses/stb-LICENSE',
     'payload/framestride', 'payload/libframestride_openxr.so', 'payload/framestride.vrmanifest',
-    'payload/default-settings.json', 'payload/assets/icon.png', 'payload/assets/InterVariable.ttf',
+    'payload/default-settings.json', 'payload/treadmill.sh', 'payload/assets/icon.png', 'payload/assets/InterVariable.ttf',
     'payload/probe/actions.json', 'payload/probe/treadmill-binding.json',
     'payload/probe/standard-locomotion-template.json',
     'payload/driver/framestride/driver.vrdrivermanifest',
@@ -25,7 +25,7 @@ REQUIRED = {
     'payload/driver/framestride/resources/icons/framestride.svg',
     'payload/driver/framestride/bin/linuxarm64/driver_framestride.so',
 }
-EXECUTABLE = {'install.sh', 'uninstall.sh', 'update.sh', 'test-on-frame.sh', 'payload/framestride'}
+EXECUTABLE = {'install.sh', 'uninstall.sh', 'update.sh', 'test-on-frame.sh', 'payload/framestride', 'payload/treadmill.sh'}
 ARM64 = {name for name in REQUIRED if name.endswith('.so') or name == 'payload/framestride'}
 
 

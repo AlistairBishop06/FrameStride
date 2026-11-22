@@ -45,7 +45,7 @@ constexpr Slider tracking[] = {
 };
 struct Toggle { const char* label; bool Settings::*member; };
 constexpr Toggle general[] = {
-    {"Enable locomotion on startup", &Settings::startup}, {"Only enable output with a game running", &Settings::gameOnly},
+    {"Enable locomotion when FrameStride opens", &Settings::startup}, {"Only enable output with a game running", &Settings::gameOnly},
     {"Pause when the SteamVR dashboard is open", &Settings::pauseDashboard},
     {"Physical stick Y takes priority", &Settings::physicalOverride},
     {"Emergency stop with left grip + stick click", &Settings::controllerStop},
