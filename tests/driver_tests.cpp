@@ -22,12 +22,14 @@ void check(bool success, const char* failure) { if (!success) throw std::runtime
 struct Input final : IVRDriverInput {
     float x = 0, y = 0;
     bool touch = false, reject = false;
+    unsigned updates = 0;
     EVRInputError CreateBooleanComponent(PropertyContainerHandle_t, const char* name, VRInputComponentHandle_t* handle) override {
         check(std::strcmp(name, "/input/joystick/touch") == 0, "incorrect touch component");
         *handle = 3;
         return VRInputError_None;
     }
     EVRInputError UpdateBooleanComponent(VRInputComponentHandle_t handle, bool value, double) override {
+        ++updates;
         check(handle == 3, "incorrect touch handle");
         touch = value;
         return VRInputError_None;
@@ -41,6 +43,7 @@ struct Input final : IVRDriverInput {
         return VRInputError_None;
     }
     EVRInputError UpdateScalarComponent(VRInputComponentHandle_t handle, float value, double) override {
+        ++updates;
         if (handle == 1) x = value;
         else if (handle == 2) {
             if (reject && value != 0) return VRInputError_InvalidHandle;
@@ -60,11 +63,13 @@ struct Input final : IVRDriverInput {
 
 struct Properties final : IVRProperties {
     int role = 0;
+    int deviceClass = 0;
     ETrackedPropertyError ReadPropertyBatch(PropertyContainerHandle_t, PropertyRead_t*, uint32_t) override { return TrackedProp_Success; }
     ETrackedPropertyError WritePropertyBatch(PropertyContainerHandle_t handle, PropertyWrite_t* write, uint32_t count) override {
         check(handle == 68, "unexpected property container");
         for (uint32_t i = 0; i < count; ++i) {
             if (write[i].prop == Prop_ControllerRoleHint_Int32) std::memcpy(&role, write[i].pvBuffer, sizeof(role));
+            if (write[i].prop == Prop_DeviceClass_Int32) std::memcpy(&deviceClass, write[i].pvBuffer, sizeof(deviceClass));
         }
         return TrackedProp_Success;
     }
@@ -75,11 +80,12 @@ struct Properties final : IVRProperties {
 struct Host final : IVRServerDriverHost {
     bool connected = false;
     unsigned additions = 0;
+    unsigned poses = 0;
     bool TrackedDeviceAdded(const char*, ETrackedDeviceClass deviceClass, ITrackedDeviceServerDriver* device) override {
         ++additions;
         return deviceClass == TrackedDeviceClass_Controller && device->Activate(5) == VRInitError_None;
     }
-    void TrackedDevicePoseUpdated(uint32_t, const DriverPose_t& pose, uint32_t) override { connected = pose.deviceIsConnected; }
+    void TrackedDevicePoseUpdated(uint32_t, const DriverPose_t& pose, uint32_t) override { ++poses; connected = pose.deviceIsConnected; }
     void VsyncEvent(double) override {}
     void VendorSpecificEvent(uint32_t, EVREventType, const VREvent_Data_t&, double) override {}
     bool IsExiting() override { return false; }
@@ -126,16 +132,19 @@ void run(const char* library) {
     Context context;
     Mailbox writer(Channel::Motion, true), status(Channel::Driver, false);
     context.hasInput = false;
-    check(provider->Init(&context) == VRInitError_None, "provider could not start without the input interface");
-    check(writer.write(0, .13f, 0, clockMilliseconds()), "could not publish app heartbeat");
-    provider->RunFrame();
-    check(context.host.additions == 0, "driver registered a device without input interface");
-    writer.disconnect();
-    provider->Cleanup();
+    check(provider->Init(&context) == VRInitError_Driver_Failed && context.host.additions == 0,
+          "provider did not safely decline activation without the input interface");
     context.hasInput = true;
-    check(provider->Init(&context) == VRInitError_None && !context.host.connected, "provider connected during initialization");
+    check(provider->Init(&context) == VRInitError_None && context.host.additions == 1 && context.host.poses == 0 && !context.host.connected,
+          "provider must register once without publishing a pose during initialization");
+    check(context.properties.role == TrackedControllerRole_Treadmill && context.properties.deviceClass == TrackedDeviceClass_Controller &&
+          !provider->ShouldBlockStandbyMode(), "incorrect initial role, device class, or standby behavior");
     provider->RunFrame();
-    check(context.host.additions == 0, "driver registered a device before FrameStride opened");
+    provider->RunFrame();
+    check(context.host.poses == 1 && !context.host.connected && context.input.updates == 0,
+          "startup should report only one disconnected pose and leave input untouched");
+    // Before the app opens, a missing mailbox is probed on a 125 ms retry interval.
+    std::this_thread::sleep_for(135ms);
     auto publish = [&](float value, unsigned flags) {
         check(writer.write(value, .13f, flags, clockMilliseconds()), "failed to supply driver test input");
         provider->RunFrame();
@@ -145,16 +154,18 @@ void run(const char* library) {
         check(context.input.touch == (expected > 0), "incorrect synthetic touch state");
     };
     publish(0, XrSelected);
-    check(context.host.additions == 0, "OpenXR selection activated the treadmill");
+    check(!context.host.connected && context.input.updates == 0, "OpenXR selection activated treadmill input");
     publish(.6f, Ready | Tracking | TreadmillSuppressed);
-    check(context.host.additions == 0, "unregistered treadmill was activated");
+    check(!context.host.connected && context.input.updates == 0, "suppressed treadmill submitted input");
     publish(0, 0);
     check(context.host.additions == 1 && context.host.connected, "FrameStride opening did not connect the treadmill");
-    check(context.properties.role == TrackedControllerRole_Treadmill && !provider->ShouldBlockStandbyMode(), "incorrect controller role or standby behavior");
     pushed(0);
     publish(.6f, Ready | Tracking);
     pushed(.6f);
     check(status.read(clockMilliseconds()).has(Submitted), "successful SteamVR submission was not reported");
+    const unsigned afterFirst = context.input.updates;
+    publish(.6f, Ready | Tracking);
+    check(context.input.updates == afterFirst, "driver resubmitted unchanged joystick values");
     publish(.6f, Ready | Tracking | TreadmillSuppressed);
     pushed(0);
     check(!context.host.connected, "removing the registration left a live treadmill connected");
@@ -192,8 +203,11 @@ void run(const char* library) {
     pushed(0);
     check(!context.host.connected && context.host.additions == 1, "closing FrameStride did not disconnect the same treadmill");
     publish(.6f, Ready | Tracking);
+    provider->EnterStandby();
+    const unsigned beforeCleanup = context.input.updates;
     provider->Cleanup();
     pushed(0);
+    check(context.input.updates == beforeCleanup, "cleanup made calls into the SteamVR input API");
     check(!status.read(clockMilliseconds()).has(Ready), "cleanup left device reported as ready");
     dlclose(module);
 }
@@ -211,5 +225,5 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::filesystem::remove_all(runtime);
-    std::cout << "PASS: OpenVR boot without a device, manual connection, scalar submission, standby, watchdog and unload\n";
+    std::cout << "PASS: OpenVR dormant registration, manual connection, change-only input, standby, watchdog and unload\n";
 }

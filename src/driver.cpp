@@ -24,6 +24,7 @@ public:
         VRProperties()->SetStringProperty(properties, Prop_InputProfilePath_String,
                                            "{framestride}/input/framestride_profile.json");
         VRProperties()->SetInt32Property(properties, Prop_ControllerRoleHint_Int32, TrackedControllerRole_Treadmill);
+        VRProperties()->SetInt32Property(properties, Prop_DeviceClass_Int32, TrackedDeviceClass_Controller);
         VRProperties()->SetBoolProperty(properties, Prop_NeverTracked_Bool, true);
         auto component = [input, properties](const char* name, VRInputComponentHandle_t& handle) {
             return input->CreateScalarComponent(properties, name, &handle, VRScalarType_Absolute,
@@ -40,11 +41,8 @@ public:
     }
 
     void Deactivate() override {
-        if (isActivated()) {
-            publish(0);
-            status_.disconnect();
-        }
-        connected_ = submitted_ = false;
+        status_.disconnect();
+        connected_ = submitted_ = sentPose_ = false;
         device_ = k_unTrackedDeviceIndexInvalid;
         standby_ = false;
         resumeAfter_ = 0;
@@ -65,13 +63,15 @@ public:
         if (!isActivated()) return;
         if (standby_ || motion.timestamp <= resumeAfter_ || motion.has(XrSelected) || motion.has(TreadmillSuppressed)) {
             disconnect();
+            if (!sentPose_) updateConnection(false);
             return;
         }
         const bool newlyConnected = !connected_;
         if (newlyConnected) updateConnection(true);
         const float value = motion.has(Ready) && motion.has(Tracking) ? motion.value : 0;
-        if (newlyConnected || value != lastValue_ || !submitted_ || now >= lastStatus_ + 80) {
-            publish(value);
+        const bool needsSubmission = newlyConnected || value != lastValue_ || !submitted_;
+        if (needsSubmission) publish(value);
+        if (needsSubmission || now >= lastStatus_ + 80) {
             status_.write(lastValue_, 0, Ready | (submitted_ ? Submitted : 0), now);
             lastStatus_ = now;
         }
@@ -83,6 +83,7 @@ private:
     void updateConnection(bool connected) {
         connected_ = connected;
         VRServerDriverHost()->TrackedDevicePoseUpdated(device_, GetPose(), sizeof(DriverPose_t));
+        sentPose_ = true;
     }
 
     void disconnect() {
@@ -111,36 +112,32 @@ private:
     VRInputComponentHandle_t x_ = 0, y_ = 0, touch_ = 0;
     std::uint64_t lastStatus_ = 0, resumeAfter_ = 0;
     float lastValue_ = 0;
-    bool connected_ = false, submitted_ = false, standby_ = false;
+    bool connected_ = false, submitted_ = false, standby_ = false, sentPose_ = false;
 };
 
 class Provider final : public IServerTrackedDeviceProvider {
 public:
     EVRInitError Init(IVRDriverContext* context) override {
         VR_INIT_SERVER_DRIVER_CONTEXT(context);
-        return VRInitError_None;
+        // SteamVR assigns the treadmill action path when the device is added.
+        // Its first frame reports a disconnected pose until FrameStride opens.
+        if (VRDriverInput() && VRServerDriverHost()->TrackedDeviceAdded(serial, TrackedDeviceClass_Controller, &device_))
+            return VRInitError_None;
+        device_.Deactivate();
+        VR_CLEANUP_SERVER_DRIVER_CONTEXT();
+        return VRInitError_Driver_Failed;
     }
     void Cleanup() override {
-        device_.EnterStandby();
         device_.Deactivate();
         motion_.disconnect();
-        registered_ = false;
         standby_ = false;
-        nextRegistration_ = 0;
         VR_CLEANUP_SERVER_DRIVER_CONTEXT();
     }
     const char* const* GetInterfaceVersions() override { return k_InterfaceVersions; }
     void RunFrame() override {
-        if (standby_ || VRServerDriverHost()->IsExiting()) return;
+        if (standby_) return;
         const auto now = clockMilliseconds();
-        const auto motion = motion_.read(now);
-        if (!registered_ && motion.timestamp && !motion.has(XrSelected) && !motion.has(TreadmillSuppressed) && now >= nextRegistration_) {
-            nextRegistration_ = now + 2000;
-            if (VRDriverInput()) {
-                registered_ = VRServerDriverHost()->TrackedDeviceAdded(serial, TrackedDeviceClass_Controller, &device_);
-            }
-        }
-        if (registered_) device_.run(motion, now);
+        device_.run(motion_.read(now), now);
     }
     bool ShouldBlockStandbyMode() override { return false; }
     void EnterStandby() override { standby_ = true; device_.EnterStandby(); }
@@ -149,8 +146,7 @@ public:
 private:
     Treadmill device_;
     Mailbox motion_{Channel::Motion, false};
-    std::uint64_t nextRegistration_ = 0;
-    bool registered_ = false, standby_ = false;
+    bool standby_ = false;
 };
 Provider provider;
 }

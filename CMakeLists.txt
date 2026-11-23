@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FrameStride VERSION 1.0.3 LANGUAGES CXX)
+project(FrameStride VERSION 1.0.4 LANGUAGES CXX)
 
 include(CTest)
 set(CMAKE_CXX_STANDARD 20)
@@ -44,10 +44,13 @@ if(FRAMESTRIDE_NATIVE)
     target_include_directories(framestride_openxr SYSTEM PRIVATE "${FRAMESTRIDE_DEPS}")
     target_link_libraries(framestride_openxr PRIVATE stride_core stride_ipc Threads::Threads)
     target_link_options(framestride PRIVATE -pie)
-    # Zig's statically linked libc++ can register process-lifetime callbacks from a DSO.
-    # Close devices and sessions immediately, and retain their code until host process exit.
-    target_link_options(driver_framestride PRIVATE -Wl,-z,nodelete)
-    target_link_options(framestride_openxr PRIVATE -Wl,-z,nodelete)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(driver_framestride PRIVATE -static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL)
+    elseif(DEFINED FRAMESTRIDE_ZIG)
+        # Retain the cross-build libraries for Zig's process-lifetime callbacks.
+        target_link_options(driver_framestride PRIVATE -Wl,-z,nodelete)
+        target_link_options(framestride_openxr PRIVATE -Wl,-z,nodelete)
+    endif()
     foreach(binary framestride driver_framestride framestride_openxr)
         target_link_options(${binary} PRIVATE "$<$<CONFIG:Release>:-Wl,--strip-debug>")
     endforeach()

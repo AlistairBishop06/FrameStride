@@ -7,8 +7,8 @@ marker=$root/.treadmill-registered
 
 registrar() {
     local candidate
-    for candidate in "${FRAMESTRIDE_VRPATHREG:-}" /opt/steamvr/bin/vrpathreg.sh \
-        /opt/steamvr/bin/linuxarm64/vrpathreg \
+    for candidate in "${FRAMESTRIDE_VRPATHREG:-}" /opt/steamvr/bin/linuxarm64/vrpathreg \
+        /opt/steamvr/bin/vrpathreg.sh \
         "$HOME/.local/share/Steam/steamapps/common/SteamVR/bin/vrpathreg.sh"; do
         if [[ -x $candidate ]]; then printf '%s\n' "$candidate"; return 0; fi
     done
