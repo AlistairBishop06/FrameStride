@@ -1,3 +1,5 @@
+# DO NOT DOWNLOAD, THIS IS STILL VERY WIP
+
 # FrameStride
 
 FrameStride converts rhythmic headset movement into continuously variable forward input for smooth-locomotion VR games. It samples the Steam Frame headset pose at 80 Hz, estimates step cadence and amplitude, and maps that motion to analogue output using your calibration. It uses the headset's existing tracking. The dashboard runs inside SteamVR and accepts controller laser-pointer input.
